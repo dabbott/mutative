@@ -1,9 +1,10 @@
+/* eslint-disable prefer-arrow-callback */
 // @ts-nocheck
 import { apply } from '../../src';
 
-const applyOperation = (state: any, patches: any) => {
-  return { newDocument: apply(state, [patches]) };
-};
+const applyOperation = (state: any, patches: any) => ({
+  newDocument: apply(state, [patches]),
+});
 
 describe('root replacement with applyOperation', function () {
   describe('add operation', function () {
@@ -264,41 +265,86 @@ describe('root replacement with applyOperation', function () {
   //   });
   // });
 
-  // describe('move operation', function () {
-  //   it('should `move` a child of type object to root (on a json document of type object)', function () {
-  //     const obj = {
-  //       child: { name: 'Charles' },
-  //     };
-  //     const newObj = applyOperation(obj, {
-  //       op: 'move',
-  //       from: '/child',
-  //       path: '',
-  //     }).newDocument;
-  //     expect(newObj).toEqual({ name: 'Charles' });
-  //   });
-  //   it('should `move` a child of type object to root (on a json document of type array)', function () {
-  //     const obj = {
-  //       child: [{ name: 'Charles' }],
-  //     };
-  //     const newObj = applyOperation(obj, {
-  //       op: 'move',
-  //       from: '/child/0',
-  //       path: '',
-  //     }).newDocument;
-  //     expect(newObj).toEqual({ name: 'Charles' });
-  //   });
-  //   it('should `move` a child of type array to root (on a json document of type object)', function () {
-  //     const obj = {
-  //       child: [{ name: 'Charles' }],
-  //     };
-  //     const newObj = applyOperation(obj, {
-  //       op: 'move',
-  //       from: '/child',
-  //       path: '',
-  //     }).newDocument;
-  //     expect(newObj).toEqual([{ name: 'Charles' }]);
-  //   });
-  // });
+  describe('move operation', function () {
+    it('should move a simple value from one property to another', function () {
+      const obj = {
+        foo: 42,
+      };
+      const newObj = applyOperation(obj, {
+        op: 'move',
+        from: '/foo',
+        path: '/bar',
+      }).newDocument;
+      expect(newObj).toEqual({
+        bar: 42,
+      });
+    });
+    it('should `move` a child of type object to root (on a json document of type object)', function () {
+      const obj = {
+        child: { name: 'Charles' },
+      };
+      const newObj = applyOperation(obj, {
+        op: 'move',
+        from: '/child',
+        path: '',
+      }).newDocument;
+      expect(newObj).toEqual({ name: 'Charles' });
+    });
+    it('should `move` a child of type object to root (on a json document of type array)', function () {
+      const obj = {
+        child: [{ name: 'Charles' }],
+      };
+      const newObj = applyOperation(obj, {
+        op: 'move',
+        from: '/child/0',
+        path: '',
+      }).newDocument;
+      expect(newObj).toEqual({ name: 'Charles' });
+    });
+    it('should `move` a child of type array to root (on a json document of type object)', function () {
+      const obj = {
+        child: [{ name: 'Charles' }],
+      };
+      const newObj = applyOperation(obj, {
+        op: 'move',
+        from: '/child',
+        path: '',
+      }).newDocument;
+      expect(newObj).toEqual([{ name: 'Charles' }]);
+    });
+    it('should `move` an array element to a different position', function () {
+      // A.7.  Moving an Array Element
+
+      const obj = {
+        foo: ['all', 'grass', 'cows', 'eat'],
+      };
+
+      const newObj = applyOperation(obj, {
+        op: 'move',
+        from: '/foo/1',
+        path: '/foo/3',
+      }).newDocument;
+
+      expect(newObj).toEqual({
+        foo: ['all', 'cows', 'eat', 'grass'],
+      });
+    });
+    it('should `move` an array element to a different earlier position', function () {
+      const obj = {
+        foo: ['all', 'cows', 'eat', 'grass'],
+      };
+
+      const newObj = applyOperation(obj, {
+        op: 'move',
+        from: '/foo/3',
+        path: '/foo/1',
+      }).newDocument;
+
+      expect(newObj).toEqual({
+        foo: ['all', 'grass', 'cows', 'eat'],
+      });
+    });
+  });
   // describe('copy operation', function () {
   //   it('should `copy` a child of type object to root (on a json document of type object) - and return', function () {
   //     const obj = {
@@ -1006,7 +1052,7 @@ describe('core', function () {
       ],
       bar: [1, 2, 3, 4],
     };
-    //jsonpatch.listenTo(obj,[]);
+    // jsonpatch.listenTo(obj,[]);
 
     obj = apply(obj, [
       {

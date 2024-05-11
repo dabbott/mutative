@@ -1,6 +1,33 @@
-import { Draft, Options, Patches, DraftType, Operation } from './interface';
-import { deepClone, get, getType, isDraft, unescapePath } from './utils';
 import { create } from './create';
+import { Draft, DraftType, Operation, Options, Patches } from './interface';
+import { deepClone, get, getType, isDraft, unescapePath } from './utils';
+
+function evaluatePointer(draft: Draft<any>, path: (string | number)[]) {
+  let base: any = draft;
+  for (let index = 0; index < path.length - 1; index += 1) {
+    const parentType = getType(base);
+    let key = path[index];
+    if (typeof key !== 'string' && typeof key !== 'number') {
+      key = String(key);
+    }
+    if (
+      ((parentType === DraftType.Object || parentType === DraftType.Array) &&
+        (key === '__proto__' || key === 'constructor')) ||
+      (typeof base === 'function' && key === 'prototype')
+    ) {
+      throw new Error(
+        `Patching reserved attributes like __proto__ and constructor is not allowed.`
+      );
+    }
+    // use `index` in Set draft
+    base = get(getType(base) === DraftType.Set ? Array.from(base) : base, key);
+    if (typeof base !== 'object') {
+      throw new Error(`Cannot apply patch at '${path.join('/')}'.`);
+    }
+  }
+
+  return base;
+}
 
 /**
  * `apply(state, patches)` to apply patches to state
@@ -33,12 +60,20 @@ export function apply<T extends object, F extends boolean = false>(
 ) {
   let i: number;
   for (i = patches.length - 1; i >= 0; i -= 1) {
-    const { value, op, path } = patches[i];
+    const { value, op, path, from } = patches[i];
     if (
       (!path.length && op === Operation.Replace) ||
       (path === '' && op === Operation.Add)
     ) {
       state = value;
+      break;
+    }
+    if (!path.length && op === Operation.Move) {
+      const fromPath = unescapePath(from!);
+      const fromBase = evaluatePointer(state, fromPath);
+      const fromKey = fromPath[fromPath.length - 1];
+      const fromValue = deepClone(fromBase[fromKey]);
+      state = fromValue;
       break;
     }
   }
@@ -47,40 +82,64 @@ export function apply<T extends object, F extends boolean = false>(
   }
   const mutate = (draft: Draft<T>) => {
     patches.forEach((patch) => {
-      const { path: _path, op } = patch;
+      const { path: _path, from: _fromPath, op } = patch;
       const path = unescapePath(_path);
-      let base: any = draft;
-      for (let index = 0; index < path.length - 1; index += 1) {
-        const parentType = getType(base);
-        let key = path[index];
-        if (typeof key !== 'string' && typeof key !== 'number') {
-          key = String(key);
-        }
-        if (
-          ((parentType === DraftType.Object ||
-            parentType === DraftType.Array) &&
-            (key === '__proto__' || key === 'constructor')) ||
-          (typeof base === 'function' && key === 'prototype')
-        ) {
-          throw new Error(
-            `Patching reserved attributes like __proto__ and constructor is not allowed.`
-          );
-        }
-        // use `index` in Set draft
-        base = get(
-          getType(base) === DraftType.Set ? Array.from(base) : base,
-          key
-        );
-        if (typeof base !== 'object') {
-          throw new Error(`Cannot apply patch at '${path.join('/')}'.`);
-        }
-      }
+      let base = evaluatePointer(draft, path);
 
       const type = getType(base);
       // ensure the original patch is not modified.
       const value = deepClone(patch.value);
       const key = path[path.length - 1];
       switch (op) {
+        case Operation.Move: {
+          const fromPath = unescapePath(_fromPath!);
+          const fromBase = evaluatePointer(draft, fromPath);
+          const fromKey = fromPath[fromPath.length - 1];
+
+          if (fromBase === base && fromKey === key) {
+            return base;
+          }
+
+          const fromValue = deepClone(fromBase[fromKey]);
+
+          if (path.length === 0) {
+            return fromValue;
+          }
+
+          switch (type) {
+            case DraftType.Array:
+              console.log({
+                path,
+                key,
+                fromPath,
+                fromBase,
+                fromKey,
+                fromValue,
+              });
+
+              const fromNumber = Number(fromKey);
+              const toNumber = Number(key);
+
+              if (fromNumber < toNumber) {
+                base.splice(fromNumber, 1);
+                base.splice(toNumber, 0, fromValue);
+                return base;
+              } else {
+                base.splice(toNumber, 0, fromValue);
+                base.splice(fromNumber + 1, 1);
+                return base;
+              }
+            case DraftType.Map:
+              return base.set(key, fromValue).delete(fromKey);
+            case DraftType.Set:
+              return base.add(fromValue).delete(value);
+            default: {
+              base[key] = fromValue;
+              delete base[fromKey];
+              return base;
+            }
+          }
+        }
         case Operation.Replace:
           switch (type) {
             case DraftType.Map:

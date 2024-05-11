@@ -11,6 +11,7 @@ export const Operation = {
   Remove: 'remove',
   Replace: 'replace',
   Add: 'add',
+  Move: 'move',
 } as const;
 
 export type DataType = keyof typeof dataTypes;
@@ -60,13 +61,16 @@ export type Patch<P extends PatchesOptions = any> = P extends {
 }
   ? IPatch & {
       path: string;
+      from?: string;
     }
   : P extends true | object
   ? IPatch & {
       path: (string | number)[];
+      from?: (string | number)[];
     }
   : IPatch & {
       path: string | (string | number)[];
+      from?: string | (string | number)[];
     };
 
 export type Patches<P extends PatchesOptions = any> = Patch<P>[];
