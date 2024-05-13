@@ -108,15 +108,6 @@ export function apply<T extends object, F extends boolean = false>(
 
           switch (type) {
             case DraftType.Array:
-              console.log({
-                path,
-                key,
-                fromPath,
-                fromBase,
-                fromKey,
-                fromValue,
-              });
-
               const fromNumber = Number(fromKey);
               const toNumber = Number(key);
 
