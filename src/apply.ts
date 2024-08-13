@@ -95,41 +95,72 @@ export function apply<T extends object, F extends boolean = false>(
           const fromPath = unescapePath(_fromPath!);
           const fromBase = evaluatePointer(draft, fromPath);
           const fromKey = fromPath[fromPath.length - 1];
+          const fromType = getType(fromBase);
 
           if (fromBase === base && fromKey === key) {
-            return base;
+            return;
           }
 
           const fromValue = deepClone(fromBase[fromKey]);
 
           if (path.length === 0) {
-            return fromValue;
+            return;
+          }
+
+          if (
+            fromBase === base &&
+            fromType === DraftType.Array &&
+            type === DraftType.Array
+          ) {
+            const fromNumber = Number(fromKey);
+            const toNumber = Number(key);
+
+            if (fromNumber < toNumber) {
+              base.splice(fromNumber, 1);
+              base.splice(toNumber, 0, fromValue);
+              return;
+            } else {
+              base.splice(toNumber, 0, fromValue);
+              base.splice(fromNumber + 1, 1);
+              return;
+            }
+          }
+
+          switch (fromType) {
+            case DraftType.Array:
+              const fromNumber = Number(fromKey);
+              fromBase.splice(fromNumber, 1);
+              break;
+            case DraftType.Map:
+              fromBase.delete(fromKey);
+              break;
+            case DraftType.Set:
+              fromBase.delete(value);
+              break;
+            default: {
+              delete fromBase[fromKey];
+              break;
+            }
           }
 
           switch (type) {
             case DraftType.Array:
-              const fromNumber = Number(fromKey);
               const toNumber = Number(key);
-
-              if (fromNumber < toNumber) {
-                base.splice(fromNumber, 1);
-                base.splice(toNumber, 0, fromValue);
-                return base;
-              } else {
-                base.splice(toNumber, 0, fromValue);
-                base.splice(fromNumber + 1, 1);
-                return base;
-              }
+              base.splice(toNumber, 0, fromValue);
+              break;
             case DraftType.Map:
-              return base.set(key, fromValue).delete(fromKey);
+              base.set(key, fromValue);
+              break;
             case DraftType.Set:
-              return base.add(fromValue).delete(value);
+              base.add(fromValue);
+              break;
             default: {
               base[key] = fromValue;
-              delete base[fromKey];
-              return base;
+              break;
             }
           }
+
+          return;
         }
         case Operation.Replace:
           switch (type) {

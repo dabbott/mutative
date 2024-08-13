@@ -344,6 +344,56 @@ describe('root replacement with applyOperation', function () {
         foo: ['all', 'grass', 'cows', 'eat'],
       });
     });
+    it('should `move` an array element to a different array', function () {
+      const obj = {
+        foo: [
+          {
+            bar: 'baz',
+          },
+        ],
+        baz: [
+          {
+            qux: 'quux',
+          },
+        ],
+      };
+
+      // Move to index 0
+      const newObj = applyOperation(obj, {
+        op: 'move',
+        from: '/foo/0',
+        path: '/baz/0',
+      }).newDocument;
+
+      expect(newObj).toEqual({
+        foo: [],
+        baz: [{ bar: 'baz' }, { qux: 'quux' }],
+      });
+
+      // Move to index 1
+      const newObj2 = applyOperation(obj, {
+        op: 'move',
+        from: '/foo/0',
+        path: '/baz/1',
+      }).newDocument;
+
+      expect(newObj2).toEqual({
+        foo: [],
+        baz: [{ qux: 'quux' }, { bar: 'baz' }],
+      });
+
+      // Move to index 20 (out of bounds)
+      const newObj3 = applyOperation(obj, {
+        op: 'move',
+        from: '/foo/0',
+        path: '/baz/20',
+      }).newDocument;
+
+      expect(newObj3).toEqual({
+        foo: [],
+        baz: [{ qux: 'quux' }, { bar: 'baz' }],
+      });
+    });
   });
   // describe('copy operation', function () {
   //   it('should `copy` a child of type object to root (on a json document of type object) - and return', function () {
