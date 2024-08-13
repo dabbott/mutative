@@ -1,6 +1,6 @@
 {
   "name": "@dabbott/mutative",
-  "version": "1.0.5-alpha.4",
+  "version": "1.0.5-alpha.5",
   "description": "A JavaScript library for efficient immutable updates",
   "main": "dist/index.js",
   "module": "dist/mutative.esm.js",
@@ -47,7 +47,8 @@
     "analyze": "size-limit --why",
     "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "publish:docs": "yarn clean && cd website && GIT_USER=unadlib USE_SSH=true yarn run deploy",
-    "start:docs": "cd website && yarn run start"
+    "start:docs": "cd website && yarn run start",
+    "prepublishOnly": "yarn clean && yarn build"
   },
   "size-limit": [
     {
