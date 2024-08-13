@@ -1,6 +1,6 @@
 {
   "name": "@dabbott/mutative",
-  "version": "1.0.5-alpha.3",
+  "version": "1.0.5-alpha.4",
   "description": "A JavaScript library for efficient immutable updates",
   "main": "dist/index.js",
   "module": "dist/mutative.esm.js",
