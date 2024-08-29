@@ -54,6 +54,7 @@ export interface ProxyDraft<T = any> {
 interface IPatch {
   op: (typeof Operation)[keyof typeof Operation];
   value?: any;
+  length?: number;
 }
 
 export type Patch<P extends PatchesOptions = any> = P extends {

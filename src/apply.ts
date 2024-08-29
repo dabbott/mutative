@@ -1,6 +1,32 @@
 import { create } from './create';
-import { Draft, DraftType, Operation, Options, Patches } from './interface';
+import {
+  Draft,
+  DraftType,
+  Operation,
+  Options,
+  Patch,
+  Patches,
+} from './interface';
 import { deepClone, get, getType, isDraft, unescapePath } from './utils';
+
+export function applyPatchToString(str: string, patch: Patch) {
+  const index = Number(patch.path[patch.path.length - 1]);
+  const length = patch.length ?? 1;
+
+  switch (patch.op) {
+    case 'add': {
+      return str.slice(0, index) + patch.value + str.slice(index);
+    }
+    case 'remove': {
+      return str.slice(0, index) + str.slice(index + length);
+    }
+    case 'replace': {
+      return str.slice(0, index) + patch.value + str.slice(index + length);
+    }
+    default:
+      return str;
+  }
+}
 
 function evaluatePointer(draft: Draft<any>, path: (string | number)[]) {
   let base: any = draft;
@@ -21,7 +47,7 @@ function evaluatePointer(draft: Draft<any>, path: (string | number)[]) {
     }
     // use `index` in Set draft
     base = get(getType(base) === DraftType.Set ? Array.from(base) : base, key);
-    if (typeof base !== 'object') {
+    if (typeof base !== 'object' && typeof base !== 'string') {
       throw new Error(`Cannot apply patch at '${path.join('/')}'.`);
     }
   }
@@ -85,6 +111,18 @@ export function apply<T extends object, F extends boolean = false>(
       const { path: _path, from: _fromPath, op } = patch;
       const path = unescapePath(_path);
       let base = evaluatePointer(draft, path);
+
+      if (typeof base === 'string') {
+        // Replace the string within the parent
+        const parentPath = path.slice(0, -1);
+        const parent = evaluatePointer(draft, parentPath);
+        const key = path[path.length - 2];
+        if (key === undefined) {
+          return;
+        }
+        parent[key] = applyPatchToString(parent[key], patch);
+        return;
+      }
 
       const type = getType(base);
       // ensure the original patch is not modified.

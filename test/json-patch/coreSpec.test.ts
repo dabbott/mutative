@@ -1,6 +1,7 @@
 /* eslint-disable prefer-arrow-callback */
 // @ts-nocheck
 import { apply } from '../../src';
+import { applyPatchToString } from '../../src/apply';
 
 const applyOperation = (state: any, patches: any) => ({
   newDocument: apply(state, [patches]),
@@ -1874,5 +1875,50 @@ describe('undefined - JS to JSON projection / JSON to JS extension', function ()
     //     bar: null,
     //   });
     // });
+  });
+});
+
+describe('applyPatchToString', () => {
+  it('adds a string', () => {
+    expect(
+      applyPatchToString('hello', { op: 'add', path: [5], value: ' world' })
+    ).toEqual('hello world');
+  });
+
+  it('removes a string', () => {
+    expect(
+      applyPatchToString('hello world', { op: 'remove', path: [5] })
+    ).toEqual('helloworld');
+  });
+
+  it('removes a string with a length', () => {
+    expect(
+      applyPatchToString('hello world', { op: 'remove', path: [5], length: 6 })
+    ).toEqual('hello');
+  });
+
+  it('replaces a string', () => {
+    expect(
+      applyPatchToString('hello world', {
+        op: 'replace',
+        path: [6],
+        length: 5,
+        value: 'foo',
+      })
+    ).toEqual('hello foo');
+  });
+
+  it('adds a string nested in object', () => {
+    const obj = { foo: 'hello' };
+
+    expect(
+      apply(obj, [
+        {
+          op: 'add',
+          path: ['foo', 5],
+          value: ' world',
+        },
+      ])
+    ).toEqual({ foo: 'hello world' });
   });
 });

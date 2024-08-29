@@ -1,6 +1,6 @@
 export { makeCreator } from './makeCreator';
 export { create } from './create';
-export { apply } from './apply';
+export { apply, applyPatchToString } from './apply';
 export { original } from './original';
 export { current } from './current';
 export { unsafe } from './unsafe';
