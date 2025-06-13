@@ -1,9 +1,11 @@
+/* eslint-disable prefer-arrow-callback */
 // @ts-nocheck
 import { apply } from '../../src';
+import { applyPatchToString } from '../../src/apply';
 
-const applyOperation = (state: any, patches: any) => {
-  return { newDocument: apply(state, [patches]) };
-};
+const applyOperation = (state: any, patches: any) => ({
+  newDocument: apply(state, [patches]),
+});
 
 describe('root replacement with applyOperation', function () {
   describe('add operation', function () {
@@ -264,41 +266,136 @@ describe('root replacement with applyOperation', function () {
   //   });
   // });
 
-  // describe('move operation', function () {
-  //   it('should `move` a child of type object to root (on a json document of type object)', function () {
-  //     const obj = {
-  //       child: { name: 'Charles' },
-  //     };
-  //     const newObj = applyOperation(obj, {
-  //       op: 'move',
-  //       from: '/child',
-  //       path: '',
-  //     }).newDocument;
-  //     expect(newObj).toEqual({ name: 'Charles' });
-  //   });
-  //   it('should `move` a child of type object to root (on a json document of type array)', function () {
-  //     const obj = {
-  //       child: [{ name: 'Charles' }],
-  //     };
-  //     const newObj = applyOperation(obj, {
-  //       op: 'move',
-  //       from: '/child/0',
-  //       path: '',
-  //     }).newDocument;
-  //     expect(newObj).toEqual({ name: 'Charles' });
-  //   });
-  //   it('should `move` a child of type array to root (on a json document of type object)', function () {
-  //     const obj = {
-  //       child: [{ name: 'Charles' }],
-  //     };
-  //     const newObj = applyOperation(obj, {
-  //       op: 'move',
-  //       from: '/child',
-  //       path: '',
-  //     }).newDocument;
-  //     expect(newObj).toEqual([{ name: 'Charles' }]);
-  //   });
-  // });
+  describe('move operation', function () {
+    it('should move a simple value from one property to another', function () {
+      const obj = {
+        foo: 42,
+      };
+      const newObj = applyOperation(obj, {
+        op: 'move',
+        from: '/foo',
+        path: '/bar',
+      }).newDocument;
+      expect(newObj).toEqual({
+        bar: 42,
+      });
+    });
+    it('should `move` a child of type object to root (on a json document of type object)', function () {
+      const obj = {
+        child: { name: 'Charles' },
+      };
+      const newObj = applyOperation(obj, {
+        op: 'move',
+        from: '/child',
+        path: '',
+      }).newDocument;
+      expect(newObj).toEqual({ name: 'Charles' });
+    });
+    it('should `move` a child of type object to root (on a json document of type array)', function () {
+      const obj = {
+        child: [{ name: 'Charles' }],
+      };
+      const newObj = applyOperation(obj, {
+        op: 'move',
+        from: '/child/0',
+        path: '',
+      }).newDocument;
+      expect(newObj).toEqual({ name: 'Charles' });
+    });
+    it('should `move` a child of type array to root (on a json document of type object)', function () {
+      const obj = {
+        child: [{ name: 'Charles' }],
+      };
+      const newObj = applyOperation(obj, {
+        op: 'move',
+        from: '/child',
+        path: '',
+      }).newDocument;
+      expect(newObj).toEqual([{ name: 'Charles' }]);
+    });
+    it('should `move` an array element to a different position', function () {
+      // A.7.  Moving an Array Element
+
+      const obj = {
+        foo: ['all', 'grass', 'cows', 'eat'],
+      };
+
+      const newObj = applyOperation(obj, {
+        op: 'move',
+        from: '/foo/1',
+        path: '/foo/3',
+      }).newDocument;
+
+      expect(newObj).toEqual({
+        foo: ['all', 'cows', 'eat', 'grass'],
+      });
+    });
+    it('should `move` an array element to a different earlier position', function () {
+      const obj = {
+        foo: ['all', 'cows', 'eat', 'grass'],
+      };
+
+      const newObj = applyOperation(obj, {
+        op: 'move',
+        from: '/foo/3',
+        path: '/foo/1',
+      }).newDocument;
+
+      expect(newObj).toEqual({
+        foo: ['all', 'grass', 'cows', 'eat'],
+      });
+    });
+    it('should `move` an array element to a different array', function () {
+      const obj = {
+        foo: [
+          {
+            bar: 'baz',
+          },
+        ],
+        baz: [
+          {
+            qux: 'quux',
+          },
+        ],
+      };
+
+      // Move to index 0
+      const newObj = applyOperation(obj, {
+        op: 'move',
+        from: '/foo/0',
+        path: '/baz/0',
+      }).newDocument;
+
+      expect(newObj).toEqual({
+        foo: [],
+        baz: [{ bar: 'baz' }, { qux: 'quux' }],
+      });
+
+      // Move to index 1
+      const newObj2 = applyOperation(obj, {
+        op: 'move',
+        from: '/foo/0',
+        path: '/baz/1',
+      }).newDocument;
+
+      expect(newObj2).toEqual({
+        foo: [],
+        baz: [{ qux: 'quux' }, { bar: 'baz' }],
+      });
+
+      // Move to index 20 (out of bounds)
+      const newObj3 = applyOperation(obj, {
+        op: 'move',
+        from: '/foo/0',
+        path: '/baz/20',
+      }).newDocument;
+
+      expect(newObj3).toEqual({
+        foo: [],
+        baz: [{ qux: 'quux' }, { bar: 'baz' }],
+      });
+    });
+  });
   // describe('copy operation', function () {
   //   it('should `copy` a child of type object to root (on a json document of type object) - and return', function () {
   //     const obj = {
@@ -1006,7 +1103,7 @@ describe('core', function () {
       ],
       bar: [1, 2, 3, 4],
     };
-    //jsonpatch.listenTo(obj,[]);
+    // jsonpatch.listenTo(obj,[]);
 
     obj = apply(obj, [
       {
@@ -1778,5 +1875,50 @@ describe('undefined - JS to JSON projection / JSON to JS extension', function ()
     //     bar: null,
     //   });
     // });
+  });
+});
+
+describe('applyPatchToString', () => {
+  it('adds a string', () => {
+    expect(
+      applyPatchToString('hello', { op: 'add', path: [5], value: ' world' })
+    ).toEqual('hello world');
+  });
+
+  it('removes a string', () => {
+    expect(
+      applyPatchToString('hello world', { op: 'remove', path: [5] })
+    ).toEqual('helloworld');
+  });
+
+  it('removes a string with a length', () => {
+    expect(
+      applyPatchToString('hello world', { op: 'remove', path: [5], length: 6 })
+    ).toEqual('hello');
+  });
+
+  it('replaces a string', () => {
+    expect(
+      applyPatchToString('hello world', {
+        op: 'replace',
+        path: [6],
+        length: 5,
+        value: 'foo',
+      })
+    ).toEqual('hello foo');
+  });
+
+  it('adds a string nested in object', () => {
+    const obj = { foo: 'hello' };
+
+    expect(
+      apply(obj, [
+        {
+          op: 'add',
+          path: ['foo', 5],
+          value: ' world',
+        },
+      ])
+    ).toEqual({ foo: 'hello world' });
   });
 });
