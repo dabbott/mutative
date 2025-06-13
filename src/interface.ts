@@ -65,32 +65,32 @@ export type Patch<P extends PatchesOptions = any> = P extends {
       from?: string;
     }
   : P extends true | object
-  ? IPatch & {
-      path: (string | number)[];
-      from?: (string | number)[];
-    }
-  : IPatch & {
-      path: string | (string | number)[];
-      from?: string | (string | number)[];
-    };
+    ? IPatch & {
+        path: (string | number)[];
+        from?: (string | number)[];
+      }
+    : IPatch & {
+        path: string | (string | number)[];
+        from?: string | (string | number)[];
+      };
 
 export type Patches<P extends PatchesOptions = any> = Patch<P>[];
 
 export type Result<
   T extends any,
   O extends PatchesOptions,
-  F extends boolean
+  F extends boolean,
 > = O extends true | object
   ? [F extends true ? Immutable<T> : T, Patches<O>, Patches<O>]
   : F extends true
-  ? Immutable<T>
-  : T;
+    ? Immutable<T>
+    : T;
 
 export type CreateResult<
   T extends any,
   O extends PatchesOptions,
   F extends boolean,
-  R extends void | Promise<void> | T | Promise<T>
+  R extends void | Promise<void> | T | Promise<T>,
 > = R extends Promise<void> | Promise<T>
   ? Promise<Result<T, O, F>>
   : Result<T, O, F>;
@@ -104,8 +104,8 @@ export type Mark<O extends PatchesOptions, F extends boolean> = (
 ) => O extends true | object
   ? BaseMark
   : F extends true
-  ? BaseMark
-  : MarkWithCopy;
+    ? BaseMark
+    : MarkWithCopy;
 
 export interface ApplyMutableOptions {
   /**
@@ -113,6 +113,24 @@ export interface ApplyMutableOptions {
    */
   mutable?: boolean;
 }
+
+export interface CreateArrayPatchesParameters {
+  isAssigned: (index: number) => boolean;
+  cloneIfNeeded: (value: any) => any;
+  concatPath: (segment: number | string) => string | string[];
+  basePath: (string | number)[];
+  original: any[];
+  copy: any[];
+}
+
+export interface ArrayPatches<P extends PatchesOptions = any> {
+  patches: Patches<P>;
+  inversePatches: Patches<P>;
+}
+
+export type CreateArrayPatches<P extends PatchesOptions = any> = (
+  params: CreateArrayPatchesParameters
+) => ArrayPatches<P> | null;
 
 export interface Options<O extends PatchesOptions, F extends boolean> {
   /**
@@ -132,6 +150,8 @@ export interface Options<O extends PatchesOptions, F extends boolean> {
    * And it can also return a shallow copy function(AutoFreeze and Patches should both be disabled).
    */
   mark?: Mark<O, F>;
+
+  createArrayPatches?: CreateArrayPatches;
 }
 
 export interface ExternalOptions<O extends PatchesOptions, F extends boolean> {
@@ -152,6 +172,8 @@ export interface ExternalOptions<O extends PatchesOptions, F extends boolean> {
    * And it can also return a shallow copy function(AutoFreeze and Patches should both be disabled).
    */
   mark?: Mark<O, F>[] | Mark<O, F>;
+
+  createArrayPatches?: CreateArrayPatches;
 }
 
 // Exclude `symbol`
@@ -166,8 +188,8 @@ export type IfAvailable<T, Fallback = void> = true | false extends (
 )
   ? Fallback
   : keyof T extends never
-  ? Fallback
-  : T;
+    ? Fallback
+    : T;
 type WeakReferences =
   | IfAvailable<WeakMap<any, any>>
   | IfAvailable<WeakSet<any>>;
@@ -176,14 +198,14 @@ type AtomicObject = Function | Promise<any> | Date | RegExp;
 export type Immutable<T> = T extends Primitive | AtomicObject
   ? T
   : T extends IfAvailable<ReadonlyMap<infer K, infer V>>
-  ? ImmutableMap<K, V>
-  : T extends IfAvailable<ReadonlySet<infer V>>
-  ? ImmutableSet<V>
-  : T extends WeakReferences
-  ? T
-  : T extends object
-  ? ImmutableObject<T>
-  : T;
+    ? ImmutableMap<K, V>
+    : T extends IfAvailable<ReadonlySet<infer V>>
+      ? ImmutableSet<V>
+      : T extends WeakReferences
+        ? T
+        : T extends object
+          ? ImmutableObject<T>
+          : T;
 
 type DraftedMap<K, V> = Map<K, Draft<V>>;
 type DraftedSet<T> = Set<Draft<T>>;
@@ -194,14 +216,14 @@ type DraftedObject<T> = {
 export type Draft<T> = T extends Primitive | AtomicObject
   ? T
   : T extends IfAvailable<ReadonlyMap<infer K, infer V>>
-  ? DraftedMap<K, V>
-  : T extends IfAvailable<ReadonlySet<infer V>>
-  ? DraftedSet<V>
-  : T extends WeakReferences
-  ? T
-  : T extends object
-  ? DraftedObject<T>
-  : T;
+    ? DraftedMap<K, V>
+    : T extends IfAvailable<ReadonlySet<infer V>>
+      ? DraftedSet<V>
+      : T extends WeakReferences
+        ? T
+        : T extends object
+          ? DraftedObject<T>
+          : T;
 
 export type ApplyOptions<F extends boolean> =
   | Pick<
@@ -213,5 +235,5 @@ export type ApplyOptions<F extends boolean> =
 export type ApplyResult<
   T extends object,
   F extends boolean = false,
-  A extends ApplyOptions<F> = ApplyOptions<F>
+  A extends ApplyOptions<F> = ApplyOptions<F>,
 > = A extends { mutable: true } ? void : T;

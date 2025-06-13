@@ -1,13 +1,15 @@
+import { RAW_RETURN_SYMBOL, dataTypes } from './constant';
+import { current, handleReturnValue } from './current';
+import { draftify } from './draftify';
 import {
   CreateResult,
   Draft,
+  ExternalOptions,
   Mark,
   Options,
-  ExternalOptions,
   PatchesOptions,
   Result,
 } from './interface';
-import { draftify } from './draftify';
 import {
   getProxyDraft,
   isDraft,
@@ -15,12 +17,10 @@ import {
   isEqual,
   revokeProxy,
 } from './utils';
-import { current, handleReturnValue } from './current';
-import { RAW_RETURN_SYMBOL, dataTypes } from './constant';
 
 type MakeCreator = <
   _F extends boolean = false,
-  _O extends PatchesOptions = false
+  _O extends PatchesOptions = false,
 >(
   options?: ExternalOptions<_O, _F>
 ) => {
@@ -28,7 +28,7 @@ type MakeCreator = <
     T extends any,
     F extends boolean = _F,
     O extends PatchesOptions = _O,
-    R extends void | Promise<void> | T | Promise<T> = void
+    R extends void | Promise<void> | T | Promise<T> = void,
   >(
     base: T,
     mutate: (draft: Draft<T>) => R,
@@ -38,7 +38,7 @@ type MakeCreator = <
     T extends any,
     F extends boolean = _F,
     O extends PatchesOptions = _O,
-    R extends void | Promise<void> = void
+    R extends void | Promise<void> = void,
   >(
     base: T,
     mutate: (draft: T) => R,
@@ -49,7 +49,7 @@ type MakeCreator = <
     P extends any[] = [],
     F extends boolean = _F,
     O extends PatchesOptions = _O,
-    R extends void | Promise<void> = void
+    R extends void | Promise<void> = void,
   >(
     mutate: (draft: Draft<T>, ...args: P) => R,
     options?: ExternalOptions<O, F>
@@ -148,6 +148,7 @@ export const makeCreator: MakeCreator = (arg) => {
       mark,
       strict,
       enablePatches,
+      createArrayPatches: options.createArrayPatches,
     };
     if (
       !isDraftable(state, _options) &&

@@ -1,4 +1,11 @@
-import { DraftType, Operation, Patches, ProxyDraft } from './interface';
+import {
+  CreateArrayPatches,
+  CreateArrayPatchesParameters,
+  DraftType,
+  Operation,
+  Patches,
+  ProxyDraft,
+} from './interface';
 import { cloneIfNeeded, escapePath, get, has, isEqual } from './utils';
 
 function generateArrayPatches(
@@ -6,40 +13,65 @@ function generateArrayPatches(
   basePath: any[],
   patches: Patches,
   inversePatches: Patches,
-  pathAsArray: boolean
+  pathAsArray: boolean,
+  createArrayPatches?: CreateArrayPatches
 ) {
   let { original, assignedMap, options } = proxyState;
   let copy = proxyState.copy!;
+
+  const params: CreateArrayPatchesParameters = {
+    isAssigned: (index: number) => {
+      return !!assignedMap!.get(index.toString());
+    },
+    cloneIfNeeded,
+    concatPath: (segment: number | string) => {
+      const _path = basePath.concat([segment]);
+      const path = escapePath(_path, pathAsArray);
+      return path;
+    },
+    basePath,
+    original,
+    copy,
+  };
+
+  if (createArrayPatches) {
+    const arrayPatches = createArrayPatches(params);
+    if (arrayPatches) {
+      patches.push(...arrayPatches.patches);
+      inversePatches.push(...arrayPatches.inversePatches);
+      return;
+    }
+  }
+
   if (copy.length < original.length) {
     [original, copy] = [copy, original];
     [patches, inversePatches] = [inversePatches, patches];
   }
+
   for (let index = 0; index < original.length; index += 1) {
     if (assignedMap!.get(index.toString()) && copy[index] !== original[index]) {
-      const _path = basePath.concat([index]);
-      const path = escapePath(_path, pathAsArray);
+      const path = params.concatPath(index);
       patches.push({
         op: Operation.Replace,
         path,
         // If it is a draft, it needs to be deep cloned, and it may also be non-draft.
-        value: cloneIfNeeded(copy[index]),
+        value: params.cloneIfNeeded(copy[index]),
       });
       inversePatches.push({
         op: Operation.Replace,
         path,
         // If it is a draft, it needs to be deep cloned, and it may also be non-draft.
-        value: cloneIfNeeded(original[index]),
+        value: params.cloneIfNeeded(original[index]),
       });
     }
   }
   for (let index = original.length; index < copy.length; index += 1) {
-    const _path = basePath.concat([index]);
-    const path = escapePath(_path, pathAsArray);
+    const path = params.concatPath(index);
     patches.push({
       op: Operation.Add,
       path,
       // If it is a draft, it needs to be deep cloned, and it may also be non-draft.
-      value: cloneIfNeeded(copy[index]),
+      value: params.cloneIfNeeded(copy[index]),
     });
   }
   if (original.length < copy.length) {
@@ -48,8 +80,7 @@ function generateArrayPatches(
     // which is inconsistent with JSON Patch specification
     const { arrayLengthAssignment = true } = options.enablePatches;
     if (arrayLengthAssignment) {
-      const _path = basePath.concat(['length']);
-      const path = escapePath(_path, pathAsArray);
+      const path = params.concatPath('length');
       inversePatches.push({
         op: Operation.Replace,
         path,
@@ -57,8 +88,7 @@ function generateArrayPatches(
       });
     } else {
       for (let index = copy.length; original.length < index; index -= 1) {
-        const _path = basePath.concat([index - 1]);
-        const path = escapePath(_path, pathAsArray);
+        const path = params.concatPath(index - 1);
         inversePatches.push({
           op: Operation.Remove,
           path,
@@ -81,8 +111,8 @@ function generatePatchesFromAssigned(
     const op = !assignedValue
       ? Operation.Remove
       : has(original, key)
-      ? Operation.Replace
-      : Operation.Add;
+        ? Operation.Replace
+        : Operation.Add;
     if (isEqual(originalValue, value) && op === Operation.Replace) return;
     const _path = basePath.concat(key);
     const path = escapePath(_path, pathAsArray);
@@ -91,8 +121,8 @@ function generatePatchesFromAssigned(
       op === Operation.Add
         ? { op: Operation.Remove, path }
         : op === Operation.Remove
-        ? { op: Operation.Add, path, value: originalValue }
-        : { op: Operation.Replace, path, value: originalValue }
+          ? { op: Operation.Add, path, value: originalValue }
+          : { op: Operation.Replace, path, value: originalValue }
     );
   });
 }
@@ -149,6 +179,8 @@ export function generatePatches(
   inversePatches: Patches
 ) {
   const { pathAsArray = true } = proxyState.options.enablePatches;
+  const createArrayPatches = proxyState.options.createArrayPatches;
+
   switch (proxyState.type) {
     case DraftType.Object:
     case DraftType.Map:
@@ -165,7 +197,8 @@ export function generatePatches(
         basePath,
         patches,
         inversePatches,
-        pathAsArray
+        pathAsArray,
+        createArrayPatches
       );
     case DraftType.Set:
       return generateSetPatches(
