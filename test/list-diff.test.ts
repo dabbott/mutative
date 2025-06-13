@@ -1,5 +1,52 @@
 import { apply, create } from '../src';
-import { Operation } from '../src/interface';
+import { CreateListDiffParams, Operation } from '../src/interface';
+
+function identity<T>(item: T): string {
+  // return item as string;
+  return typeof item === 'object' && item !== null && 'id' in item
+    ? (item.id as string)
+    : (item as string);
+}
+
+function createListDiff(params: CreateListDiffParams) {
+  const arrayDiff = computeArrayDiff(params.original, params.copy, identity);
+  const inverseArrayDiff = computeArrayDiff(
+    params.copy,
+    params.original,
+    identity
+  );
+
+  function convert(item: ArrayDiffItem<any>) {
+    switch (item[0]) {
+      case 'a':
+        const [, value, to] = item;
+        return {
+          op: Operation.Add,
+          path: params.concatPath(to ?? '~'),
+          value: params.cloneIfNeeded(value),
+        };
+      case 'r':
+        return {
+          op: Operation.Remove,
+          path: params.concatPath(item[1]),
+        };
+      case 'm':
+        return {
+          op: Operation.Move,
+          from: params.concatPath(item[1]),
+          path: params.concatPath(item[2]),
+        };
+    }
+  }
+
+  const patches = arrayDiff.map(convert);
+  const inversePatches = inverseArrayDiff.map(convert);
+
+  return {
+    patches,
+    inversePatches,
+  };
+}
 
 test('patches should be minimal', () => {
   const data = { list: [1, 2] };
@@ -13,50 +60,54 @@ test('patches should be minimal', () => {
         pathAsArray: true,
         arrayLengthAssignment: false,
       },
-      createListDiff: (params) => {
-        const arrayDiff = computeArrayDiff(params.original, params.copy);
-        const inverseArrayDiff = computeArrayDiff(params.copy, params.original);
-
-        function convert(item: ArrayDiffItem<any>) {
-          switch (item[0]) {
-            case 'a':
-              const [, value, to] = item;
-              return {
-                op: Operation.Add,
-                path: params.concatPath(to ?? '~'),
-                value: params.cloneIfNeeded(value),
-              };
-            case 'r':
-              return {
-                op: Operation.Remove,
-                path: params.concatPath(item[1]),
-              };
-            case 'm':
-              return {
-                op: Operation.Move,
-                path: params.concatPath(item[1]),
-                from: params.concatPath(item[2]),
-              };
-          }
-        }
-
-        const patches = arrayDiff.map(convert);
-        const inversePatches = inverseArrayDiff.map(convert);
-
-        return {
-          patches,
-          inversePatches,
-        };
-      },
+      createListDiff,
     }
   );
 
   expect(state).toEqual({ list: [2] });
-  expect(apply(data, patches)).toEqual({ list: [2] });
+  expect(apply(data, patches)).toEqual(state);
   expect(apply(state, inversePatches)).toEqual(data);
+  expect(patches.length).toBe(1);
+  expect(inversePatches.length).toBe(1);
+});
+
+test('patches should detect moves', () => {
+  const data = {
+    todos: [
+      { id: 1, title: 'Buy groceries' },
+      { id: 2, title: 'Buy groceries' },
+      { id: 3, title: 'Buy groceries' },
+    ],
+  };
+  const [state, patches, inversePatches] = create(
+    data,
+    (draft) => {
+      const last = draft.todos.pop();
+      draft.todos.unshift(last!);
+    },
+    {
+      enablePatches: {
+        pathAsArray: true,
+        arrayLengthAssignment: false,
+      },
+      createListDiff,
+    }
+  );
 
   console.log(patches);
   console.log(inversePatches);
+
+  expect(state).toEqual({
+    todos: [
+      { id: 3, title: 'Buy groceries' },
+      { id: 1, title: 'Buy groceries' },
+      { id: 2, title: 'Buy groceries' },
+    ],
+  });
+  expect(apply(data, patches)).toEqual(state);
+  expect(apply(state, inversePatches)).toEqual(data);
+  expect(patches.length).toBe(1);
+  expect(inversePatches.length).toBe(2);
 });
 
 export type ArrayDiffAddItem<T> =
@@ -84,15 +135,6 @@ export function moved<T>(from: number, to: number): ArrayDiffItem<T> {
   return ['m', from, to];
 }
 
-function filterDuplicates<T>(
-  a: T[],
-  identity: (item: T) => unknown = (item) => item
-): T[] {
-  const map = new Map(a.map((item, index) => [identity(item), index]));
-
-  return [...map.values()].map((index) => a[index]);
-}
-
 export function computeArrayDiff(
   a: string[],
   b: string[]
@@ -109,57 +151,124 @@ export function computeArrayDiff<T>(
   identity: (item: T) => string = (item) => item as string,
   options: { removalMode?: 'key' | 'index' } = {}
 ): ArrayDiffItem<T>[] {
-  const items: ArrayDiffItem<T>[] = [];
-  const aMap = new Map(a.map((item, index) => [identity(item), index]));
-  const bMap = new Map(b.map((item, index) => [identity(item), index]));
-  let result: T[] = [...a];
-
-  // Detect duplicates by comparing array length vs map size.
-  if (aMap.size !== a.length || bMap.size !== b.length) {
-    return computeArrayDiff(
-      filterDuplicates(a, identity),
-      filterDuplicates(b, identity),
-      identity,
-      options
+  if (a.length === 0 && b.length === 0) return [];
+  if (a.length === 0)
+    return b.map((item, i) =>
+      i === b.length - 1 ? added<T>(item) : added<T>(item, i)
     );
+  if (b.length === 0)
+    return a
+      .map((_, i) =>
+        removed<T>(options.removalMode === 'key' ? identity(a[i]) : i)
+      )
+      .reverse();
+
+  const aIdentities = a.map(identity);
+  const bIdentities = b.map(identity);
+
+  if (
+    a.length === b.length &&
+    aIdentities.every((id, i) => id === bIdentities[i])
+  ) {
+    return [];
   }
 
-  // Check for removed items.
-  let removalOffset = 0;
+  const operations: ArrayDiffItem<T>[] = [];
+
+  const aContentMap = new Map<string, number[]>();
+  const bContentMap = new Map<string, number[]>();
+
+  for (let i = 0; i < aIdentities.length; i++) {
+    const content = aIdentities[i];
+    if (!aContentMap.has(content)) aContentMap.set(content, []);
+    aContentMap.get(content)!.push(i);
+  }
+
+  for (let i = 0; i < bIdentities.length; i++) {
+    const content = bIdentities[i];
+    if (!bContentMap.has(content)) bContentMap.set(content, []);
+    bContentMap.get(content)!.push(i);
+  }
+
+  const aUsed = new Set<number>();
+  const bUsed = new Set<number>();
+
+  for (let bIndex = 0; bIndex < b.length; bIndex++) {
+    const content = bIdentities[bIndex];
+    const availableAIndices =
+      aContentMap.get(content)?.filter((aIndex) => !aUsed.has(aIndex)) || [];
+
+    if (availableAIndices.length > 0) {
+      const bestAIndex = availableAIndices[0];
+      aUsed.add(bestAIndex);
+      bUsed.add(bIndex);
+    }
+  }
+
+  let result = [...a];
+  let resultIdentities = [...aIdentities];
+
+  let removalCount = 0;
+
   for (let i = 0; i < a.length; i++) {
-    const item = a[i];
-    const itemIdentity = identity(item);
-    if (!bMap.has(itemIdentity)) {
-      items.push(
+    if (!aUsed.has(i)) {
+      operations.push(
         removed(
-          options.removalMode === 'key' ? itemIdentity : i - removalOffset
+          options.removalMode === 'key' ? aIdentities[i] : i - removalCount
         )
       );
-      applyArrayDiffItemMutable(result, items[items.length - 1], identity);
-      removalOffset++;
+
+      result.splice(i - removalCount, 1);
+      resultIdentities.splice(i - removalCount, 1);
+
+      removalCount++;
     }
   }
 
-  // Check for added items.
-  for (let i = 0; i < b.length; i++) {
-    const item = b[i];
-    if (!aMap.has(identity(item))) {
-      // Check if i is the last index in the current result.
-      if (i === result.length) {
-        items.push(added(item));
-        // console.log('yes');
+  const addOperations: ArrayDiffItem<T>[] = [];
+  const moveOperations: ArrayDiffItem<T>[] = [];
+
+  for (let targetPos = 0; targetPos < b.length; targetPos++) {
+    const targetItem = b[targetPos];
+
+    if (!bUsed.has(targetPos)) {
+      if (targetPos === result.length) {
+        addOperations.push(added(targetItem));
       } else {
-        items.push(added(item, i));
+        addOperations.push(added(targetItem, targetPos));
       }
 
-      // items.push(added(item, i));
-      applyArrayDiffItemMutable(result, items[items.length - 1], identity);
+      result.splice(targetPos, 0, targetItem);
+      resultIdentities.splice(targetPos, 0, bIdentities[targetPos]);
     }
   }
 
-  items.push(...computeArrayMoves(result, b, identity));
+  for (let targetPos = 0; targetPos < b.length; targetPos++) {
+    if (bUsed.has(targetPos)) {
+      const targetContent = bIdentities[targetPos];
 
-  return items;
+      let currentPos = -1;
+      for (let i = targetPos; i < resultIdentities.length; i++) {
+        if (resultIdentities[i] === targetContent) {
+          currentPos = i;
+          break;
+        }
+      }
+
+      if (currentPos > targetPos) {
+        moveOperations.push(moved(currentPos, targetPos));
+        const [item] = result.splice(currentPos, 1);
+        result.splice(targetPos, 0, item);
+
+        const [movedIdentity] = resultIdentities.splice(currentPos, 1);
+        resultIdentities.splice(targetPos, 0, movedIdentity);
+      }
+    }
+  }
+
+  operations.push(...addOperations, ...moveOperations);
+
+  return operations;
 }
 
 function getIndex<T>(
@@ -258,40 +367,25 @@ export function getAddedItems<T>(items: ArrayDiffItem<T>[]): T[] {
   return items.flatMap((item) => (item[0] === 'a' ? [item[1]] : []));
 }
 
-function computeArrayMoves<T>(
-  a: T[],
-  b: T[],
-  identity: (item: T) => string = (item) => item as string
-): ArrayDiffItem<T>[] {
-  const items: ArrayDiffItem<T>[] = [];
-  const indexMap = new Map<string, number>();
-  const result = [...a];
-
-  // Prepare a map from item identity to its target index in array b
-  b.forEach((item, index) => {
-    indexMap.set(identity(item), index);
-  });
-
-  // Iterate over the array and move each item to its correct position
-  for (let i = 0; i < result.length; i++) {
-    const currentId = identity(result[i]);
-    const targetIndex = indexMap.get(currentId)!;
-
-    if (i !== targetIndex) {
-      const itemToMoveIndex = result.findIndex(
-        (item, idx) => idx >= i && identity(item) === identity(b[i])
-      );
-      if (itemToMoveIndex > i) {
-        // Move operation: item needs to be moved to the current index i
-        const move = moved<T>(itemToMoveIndex, i);
-        items.push(move);
-
-        // Perform the move
-        const [movedItem] = result.splice(itemToMoveIndex, 1); // Remove the item from its current position
-        result.splice(i, 0, movedItem); // Insert it at the target position
-      }
-    }
+export function diffItemToJsonPatch<T>(item: ArrayDiffItem<T>) {
+  switch (item[0]) {
+    case 'a':
+      const [, value, to] = item;
+      return {
+        op: 'add',
+        path: to ?? '~',
+        value: value,
+      } as const;
+    case 'r':
+      return {
+        op: 'remove',
+        path: item[1],
+      } as const;
+    case 'm':
+      return {
+        op: 'move',
+        path: item[1],
+        from: item[2],
+      } as const;
   }
-
-  return items;
 }
