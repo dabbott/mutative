@@ -148,6 +148,7 @@ export const makeCreator: MakeCreator = (arg) => {
       mark,
       strict,
       enablePatches,
+      createListDiff: options.createListDiff,
     };
     if (
       !isDraftable(state, _options) &&
